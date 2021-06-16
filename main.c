@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +32,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define STARTBYTE 0xAA
+
+#define LED_ON    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET)
+#define LED_OFF   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET)
+
+#define DE_ENABLE    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET)
+#define DE_DISABLE   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET)
+
+#define RE_ENABLE    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET)
+#define RE_DISABLE   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,7 +53,21 @@
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+uint8_t count_rx;                // счетчик принятых байт
+uint8_t buf_rx[9];               // буфер принятых байт
+uint8_t buf_tx[9];               // буфер отправленных байт
+uint8_t received_byte;           // принятый байт
+uint8_t rx_checked;              // флаг = 1, если посылка принята корректно (9 байт, стартовый байт, контрольная сумма)
+uint8_t collimator;              // выбранный коллиматор для опроса
+uint8_t dir_auto;                // направление движения двигателя при автоматическом режиме(1 - против ЧС, 2 - по ЧС)
+uint8_t dir_man;                 // направление движения двигателя при ручном режиме(1 - против ЧС, 2 - по ЧС)
+uint8_t heat_L1, heat_L2;        // флаги нагрева сеток
+uint8_t duty_cycle_L1, duty_cycle_L2; // процент нагрева сеток
+uint8_t mode;                    // режим смещения (1 - ручной, 0  - автоматический)
+uint16_t steps;
+uint8_t temperature;
 
+uint8_t cou;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,7 +80,82 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+//-------------------------------------------------------------
+//-------------------------------------------------------------
+//-------------------------------------------------------------
 
+//-------------------------------------------------------------
+uint8_t XOR_calc(uint8_t *buf, uint8_t length)
+{
+	uint8_t sum_xor = 0;
+	for(int i = 0; i < length; i++)
+		sum_xor ^= buf[i];
+	return sum_xor;	
+}
+//-------------------------------------------------------------
+bool CheckBit(uint8_t byte, uint8_t bit)
+{
+	if ((byte & (1 << bit)) == 0) return false;
+	return true;
+}
+//-------------------------------------------------------------
+void SendPacket(void)
+{
+	buf_tx[0] = STARTBYTE;
+	buf_tx[1] = collimator;
+	
+	buf_tx[5] = temperature;
+	buf_tx[8] = XOR_calc(buf_tx, 8);
+	
+	RE_ENABLE;
+	DE_ENABLE;
+	for(int i = 0; i < 9; i++)
+		HAL_UART_Transmit(&huart1, &buf_tx[i], 1, 1000);
+	DE_DISABLE;
+	RE_DISABLE;
+}
+//-------------------------------------------------------------
+void GetReceivedData(void)
+{
+	// 1 байт
+	collimator = buf_rx[1];
+	// 2 байт
+	if(CheckBit(buf_rx[2], 5)) dir_auto = 2; else dir_auto = 1; 
+	if(CheckBit(buf_rx[2], 3)) heat_L2 = 1;	else heat_L2 = 0;	
+	if(CheckBit(buf_rx[2], 2)) heat_L1 = 1;	else heat_L1 = 0;	
+	if(CheckBit(buf_rx[2], 1)) mode = 1; else mode = 0;
+	if(CheckBit(buf_rx[2], 0)) dir_auto = 2; else dir_auto = 1;
+	// 3-4 байты
+	steps = (uint16_t)(buf_rx[3] << 8) | buf_rx[4];
+	// 5-6 байты
+	duty_cycle_L1 = buf_rx[5];
+	duty_cycle_L2 = buf_rx[6];
+	
+	buf_tx[0] = STARTBYTE;
+	buf_tx[1] = collimator;
+	
+	buf_tx[5] = temperature;
+	buf_tx[8] = XOR_calc(buf_tx, 8);
+
+	SendPacket();
+}
+//-------------------------------------------------------------
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{ 
+		buf_rx[count_rx] = received_byte;
+		count_rx++;
+		switch(count_rx)
+		{
+			case 1:
+				if(buf_rx[0] != STARTBYTE) count_rx = 0; break;
+			case 9: 
+				count_rx=0;
+				if(XOR_calc(buf_rx, 9) == 0) { rx_checked = 1; cou++; }	
+				break;
+		}	  
+		HAL_UART_Receive_IT(&huart1, &received_byte, 1);	
+}
+//-------------------------------------------------------------
 /* USER CODE END 0 */
 
 /**
@@ -89,13 +188,19 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Receive_IT(&huart1, &received_byte, 1);
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		if(rx_checked)
+		{
+			rx_checked = 0;
+			GetReceivedData();
+		}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -189,13 +294,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2|GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : PA8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  /*Configure GPIO pins : PA2 PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
