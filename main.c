@@ -67,9 +67,11 @@ uint8_t heat_L1, heat_L2;        // флаги нагрева сеток
 uint8_t duty_cycle_L1, duty_cycle_L2; // процент нагрева сеток
 uint8_t mode;                    // режим смещения (1 - ручной, 0  - автоматический)
 uint16_t steps;
-uint8_t temperature;
+int8_t temperature;
+uint8_t dt[9];
 
 uint8_t cou;
+uint8_t state_ds1820 = 2;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,6 +106,18 @@ uint8_t XOR_calc(uint8_t *buf, uint8_t length)
 	for(int i = 0; i < length; i++)
 		sum_xor ^= buf[i];
 	return sum_xor;	
+}
+void ExtractTemperature(void)
+{
+	uint8_t st = 1;	
+	state_ds1820 = ds18b20_Init();
+	while(st != 0)
+	{
+		ds18b20_MeasureTemperCmd();
+	  HAL_Delay(150);
+		st =ds18b20_ReadScratcpad(dt);
+	}
+	temperature = getTemperature(dt);
 }
 //-------------------------------------------------------------
 bool CheckBit(uint8_t byte, uint8_t bit)
@@ -142,14 +156,9 @@ void GetReceivedData(void)
 	steps = (uint16_t)(buf_rx[3] << 8) | buf_rx[4];
 	// 5-6 байты
 	duty_cycle_L1 = buf_rx[5];
-	duty_cycle_L2 = buf_rx[6];
-	
-	buf_tx[0] = STARTBYTE;
-	buf_tx[1] = collimator;
-	
-	buf_tx[5] = temperature;
-	buf_tx[8] = XOR_calc(buf_tx, 8);
-
+	duty_cycle_L2 = buf_rx[6];	
+  
+	ExtractTemperature();
 	SendPacket();
 }
 //-------------------------------------------------------------
@@ -204,12 +213,14 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 	
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		
 		if(rx_checked)
 		{
 			rx_checked = 0;

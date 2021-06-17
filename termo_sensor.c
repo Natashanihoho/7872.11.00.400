@@ -26,11 +26,11 @@ int8_t getTemperature(uint8_t *ScratchpadData)
 uint8_t ds18b20_Reset(void)
 {
   uint8_t status;
-  GPIOA->ODR &= ~GPIO_ODR_ODR2;//низкий уровень
+  GPIOA->ODR &= ~GPIO_ODR_ODR15;//низкий уровень
   Delay_us(485);//задержка как минимум на 480 микросекунд
-  GPIOA->ODR |= GPIO_ODR_ODR2;//высокий уровень
+  GPIOA->ODR |= GPIO_ODR_ODR15;//высокий уровень
   Delay_us(65);//задержка как минимум на 60 микросекунд
-  status = GPIOA->IDR & GPIO_IDR_IDR2;//проверяем уровень
+  status = GPIOA->IDR & GPIO_IDR_IDR15;//проверяем уровень
   Delay_us(500);//задержка как минимум на 480 микросекунд
   return (status ? 1 : 0);//вернём результат
 }
@@ -38,11 +38,11 @@ uint8_t ds18b20_Reset(void)
 uint8_t ds18b20_ReadBit(void)
 {
   uint8_t bit = 0;
-  GPIOA->ODR &= ~GPIO_ODR_ODR2;//низкий уровень
+  GPIOA->ODR &= ~GPIO_ODR_ODR15;//низкий уровень
   Delay_us(2);
-	GPIOA->ODR |= GPIO_ODR_ODR2;//высокий уровень
+	GPIOA->ODR |= GPIO_ODR_ODR15;//высокий уровень
   Delay_us(2);
-	bit = (GPIOA->IDR & GPIO_IDR_IDR2 ? 1 : 0);//проверяем уровень
+	bit = (GPIOA->IDR & GPIO_IDR_IDR15 ? 1 : 0);//проверяем уровень
 	Delay_us(45);
 	return bit;
 }
@@ -57,9 +57,9 @@ uint8_t ds18b20_ReadByte(void)
 
 void ds18b20_WriteBit(uint8_t bit)
 {
-  GPIOA->ODR &= ~GPIO_ODR_ODR2;
+  GPIOA->ODR &= ~GPIO_ODR_ODR15;
   Delay_us(bit ? 3 : 65);
-  GPIOA->ODR |= GPIO_ODR_ODR2;
+  GPIOA->ODR |= GPIO_ODR_ODR15;
   Delay_us(bit ? 65 : 3);
 }
 
