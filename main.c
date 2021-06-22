@@ -161,8 +161,28 @@ void GetReceivedData(void)
 	collimator = buf_rx[1];
 	// 2 байт
 	if(CheckBit(buf_rx[2], 5)) dir_auto = 2; else dir_auto = 1; 
-	if(CheckBit(buf_rx[2], 3)) heat_L2 = 1;	else heat_L2 = 0;	
-	if(CheckBit(buf_rx[2], 2)) heat_L1 = 1;	else heat_L1 = 0;	
+	if(CheckBit(buf_rx[2], 3)) 
+	{
+		heat_L2 = 1;
+    TIM2->CCR4 = ((TIM2->ARR) * buf_rx[5])/100;		
+		HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
+	}
+	else 
+	{
+		heat_L2 = 0;
+		HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_4);
+	}		
+	if(CheckBit(buf_rx[2], 2)) 
+	{
+		heat_L1 = 1;	
+		TIM1->CCR4 = ((TIM1->ARR) * buf_rx[6])/100;		
+		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+	}
+	else 
+	{
+		heat_L1 = 0;
+		HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_4);
+	}		
 	if(CheckBit(buf_rx[2], 1)) mode = 1; else mode = 0;
 	if(CheckBit(buf_rx[2], 0)) dir_auto = 2; else dir_auto = 1;
 	// 3-4 байты
@@ -176,7 +196,7 @@ void GetReceivedData(void)
 }
 //-------------------------------------------------------------
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{ 
+{   LED_OFF;
 		buf_rx[count_rx] = received_byte;
 		count_rx++;
 		switch(count_rx)
@@ -185,7 +205,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				if(buf_rx[0] != STARTBYTE) count_rx = 0; break;
 			case 9: 
 				count_rx=0;
-				if(XOR_calc(buf_rx, 9) == 0) rx_checked = 1; 
+				if(XOR_calc(buf_rx, 9) == 0) { rx_checked = 1; LED_ON;} 
 				break;
 		}	  
 		HAL_UART_Receive_IT(&huart1, &received_byte, 1);	
@@ -231,6 +251,9 @@ int main(void)
 	StartMot1();
 	HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 	
+//	TIM1->CCR4 = ((TIM1->ARR) * 50)/100;	
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+	//HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
